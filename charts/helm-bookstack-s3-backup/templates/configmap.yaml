@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: {{ .Release.Name }}-config
+    namespace: {{ .Release.Namespace }}
+data:
+  backup.sh: |
+    #!/bin/sh
+    set -e
+
+    # Log functions
+    log() {
+      local level="$1"
+      local message="$2"
+      echo "[${level}] ${message}"
+    }
+
+    info()  { log "INFO" "$1"; }
+    warn()  { log "WARN" "$1"; }
+    error() { log "ERROR" "$1"; }
+
+    # Validate environment variables
+    : "${S3_BUCKET:?$(error 'Environment variable S3_BUCKET not set')}"
+    : "${S3_ENDPOINT:?$(error 'Environment variable S3_ENDPOINT not set')}"
+    : "${S3_REGION:?$(error 'Environment variable S3_REGION not set')}"
+
+    # Get the bookstack pod name & container name
+    BOOKSTACK_POD=$(kubectl get pod -n $BOOKSTACK_NAMESPACE -l app=$BOOKSTACK_APP -o jsonpath="{.items[0].metadata.name}")
+
+    # Set the timestamp and file name
+    TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
+    FILE_NAME="bookstack-backup-$TIMESTAMP"
+
+    # Import the key if S3_SSE_KEY is set
+    if [ -n "$S3_SSE_KEY" ]; then
+        S3_SSE_C_PATH="/mnt/backup/.sse-c.key"
+        echo "$S3_SSE_KEY" | xxd -r -p > "$S3_SSE_C_PATH"
+    fi
+
+
+    #sleep infinity
+
+    info "Creating backup with document exporter..."
+    kubectl exec ${BOOKSTACK_POD} --container $BOOKSTACK_CONTAINER_NAME -- \
+      sh -c 'mysqldump --skip-ssl -h $DB_HOST -u $DB_USERNAME -p$DB_PASSWORD $DB_DATABASE > /tmp/'${FILE_NAME}'.sql' 
+      
+    kubectl exec ${BOOKSTACK_POD} --container $BOOKSTACK_CONTAINER_NAME -- \
+      sh -c 'cd /app/www/ && tar --dereference -czvf /tmp/bookstack-files-backup.tar.gz public/uploads storage/uploads themes'
+  
+    info "Copying sql backup file to this pod..."
+    kubectl cp \
+      --container="${BOOKSTACK_CONTAINER_NAME}" \
+      ${BOOKSTACK_POD}:/tmp/${FILE_NAME}.sql \
+      /mnt/backup/bookstack-backup-db.sql
+    
+    info "Copying bookstack folder backup file to the host..."
+    kubectl cp \
+      --container="${BOOKSTACK_CONTAINER_NAME}" \
+      ${BOOKSTACK_POD}:/tmp/bookstack-files-backup.tar.gz \
+      /mnt/backup/bookstack-files-backup.tar.gz
+
+    info "Unzipping backup file..."
+    tar -xzvf /mnt/backup/bookstack-files-backup.tar.gz -C /mnt/backup/
+    
+    info "Removing tar file local..."
+    rm /mnt/backup/bookstack-files-backup.tar.gz
+    
+    info "Cleaning up backup files remote..."
+    kubectl exec ${BOOKSTACK_POD} --container ${BOOKSTACK_CONTAINER_NAME} -- \
+      bash -c "rm /tmp/${FILE_NAME}.sql && \
+      rm /tmp/bookstack-files-backup.tar.gz"
+
+    info "Uploading backup to S3..."
+    CMD="aws s3 sync /mnt/backup s3://$S3_BUCKET --endpoint-url $S3_ENDPOINT --region $S3_REGION --exclude '.sse-c.key'"
+
+    if [ -n "$S3_SSE_KEY" ]; then
+      CMD="$CMD --sse-c AES256 --sse-c-key fileb://$S3_SSE_C_PATH"
+      info "Using server-side encryption with customer-provided key"
+    fi
+
+    eval "$CMD"

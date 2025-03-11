@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-cronjob
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: "{{ .Values.cron }}"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          name: {{ .Release.Name }}
+          labels:
+            app: {{ .Release.Name }}
+        spec:
+          serviceAccountName: {{ .Release.Name }}
+          restartPolicy: OnFailure
+
+          containers:
+            - name: bookstack-backup
+              image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+              command: ["bash", "-c", "/opt/bookstack-s3-backup/backup.sh"]
+              envFrom:
+                - secretRef:
+                    name: {{ .Release.Name }}-secret
+              securityContext:
+                runAsUser: 34
+                seccompProfile:
+                  type: RuntimeDefault
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /mnt/backup
+                - name: backup-script
+                  mountPath: /opt/bookstack-s3-backup/backup.sh
+                  subPath: backup.sh
+                  
+          volumes:
+            - name: backup-volume
+              emptyDir: {}
+            - name: backup-script
+              configMap:
+                name: {{ .Release.Name }}-config
+                items:
+                  - key: backup.sh
+                    path: backup.sh
+                defaultMode: 0555
