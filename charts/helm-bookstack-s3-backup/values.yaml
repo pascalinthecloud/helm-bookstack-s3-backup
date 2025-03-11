@@ -1,0 +1,21 @@
+# Default values for helm-bookstack-s3-backup.
+name: helm-bookstack-s3-backup
+cron: "0 4 * * 0"
+
+image:
+  repository: pascaaal/docker-awscli-kubectl-zip
+  tag: v1.0.8
+
+s3:
+  accessKey:
+  secretKey:
+  bucket:
+  endpoint: # including https://
+  region:
+  sseKey:
+    # 32 bytes hex key (openssl rand -hex 32) for server-side encryption (encprytion enabled when set)
+
+bookstack:
+  namespace:
+  app: # app label of the bookstack pod
+  container_name:

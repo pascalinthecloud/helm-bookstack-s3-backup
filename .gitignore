@@ -1,0 +1,7 @@
+# Helm-related files
+*.tgz
+*.lock
+.chart-releaser.yaml
+.release.yaml
+.local.values.yaml
+*.kubeconfig
