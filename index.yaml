@@ -1,0 +1,15 @@
+apiVersion: v1
+entries:
+  helm-bookstack-s3-backup:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2025-03-13T19:51:09.493067237Z"
+    description: A Helm chart for automating Bookstack backups to a S3 bucket in Kubernetes
+      with optional encryption.
+    digest: 6fa7dd46f6f530cf5bbfa17115daaa554ab51baf90456be4785aaecfdfb96825
+    name: helm-bookstack-s3-backup
+    type: application
+    urls:
+    - https://github.com/pascalinthecloud/helm-bookstack-s3-backup/releases/download/helm-bookstack-s3-backup-0.1.0/helm-bookstack-s3-backup-0.1.0.tgz
+    version: 0.1.0
+generated: "2025-03-13T19:51:09.49307428Z"
